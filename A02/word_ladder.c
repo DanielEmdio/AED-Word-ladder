@@ -61,7 +61,7 @@ typedef struct hash_table_s hash_table_t;
 
 struct adjacency_node_s
 {
-  adjacency_node_t *next;    // link to th enext adjacency list node
+  adjacency_node_t *next;    // link to the next adjacency list node
   hash_table_node_t *vertex; // the other vertex
 };
 
@@ -183,9 +183,21 @@ static void hash_table_free(hash_table_t *hash_table)
     hash_table_node_t *node = hash_table->heads[i];
     hash_table_node_t *next_node;
 
+    adjacency_node_t *adj_node;
+    adjacency_node_t *next_adj_node;
+
     while (node != NULL)
     {
       next_node = node->next;
+
+      adj_node = node->head;
+      while (adj_node != NULL)
+      {
+        next_adj_node = adj_node->next;
+        free_adjacency_node(adj_node);
+        adj_node = next_adj_node;
+      }
+
       free_hash_table_node(node);
       node = next_node;
     }
@@ -203,6 +215,7 @@ static void hash_table_grow(hash_table_t *hash_table)
   for (unsigned int i = 0u; i < hash_table->hash_table_size; i++)
     new_hash_table_heads[i] = NULL;
 
+  // loop over the old hash_table
   for (unsigned int i = 0u; i < hash_table->hash_table_size; i++)
   {
     hash_table_node_t *node = hash_table->heads[i];
@@ -216,18 +229,9 @@ static void hash_table_grow(hash_table_t *hash_table)
       unsigned int new_idx = crc32(node->word) % new_hash_table_size; // calculate new index with the new hash table size
       hash_table_node_t *new_hash_table_node_pointer = new_hash_table_heads[new_idx];
 
-      if (new_hash_table_node_pointer != NULL)
-      {
-        while (new_hash_table_node_pointer->next != NULL)
-        {
-          new_hash_table_node_pointer = new_hash_table_node_pointer->next;
-        }
-        new_hash_table_node_pointer->next = node; // reasign the current hash_table node to the new hash_table
-      }
-      else
-      {
-        new_hash_table_heads[new_idx] = node;
-      }
+      // assign the current node to the new hash_table
+      new_hash_table_heads[new_idx] = node;
+      node->next = new_hash_table_node_pointer;
 
       node = next_node_saved_pointer;
     }
@@ -248,6 +252,7 @@ static hash_table_node_t *find_word(hash_table_t *hash_table, const char *word, 
   hash_table_node_t *node = NULL;
   bool node_found = false;
 
+  // loop over the hash table to look for the word
   for (unsigned int i = 0; i < hash_table->hash_table_size && node_found == false; i++)
   {
     node = hash_table->heads[i];
@@ -262,11 +267,9 @@ static hash_table_node_t *find_word(hash_table_t *hash_table, const char *word, 
 
   if (!node_found && insert_if_not_found)
   {
-    // printf("No duplicate detected -- adding node!!\n");
-
     unsigned i = crc32(word) % hash_table->hash_table_size;
-    hash_table_node_t *current_node = hash_table->heads[i];
 
+    // fill in all of the values on the new node
     node = allocate_hash_table_node();
     node->next = node->previous = NULL;
     node->head = NULL;
@@ -275,18 +278,10 @@ static hash_table_node_t *find_word(hash_table_t *hash_table, const char *word, 
     node->visited = 0;
     strcpy(node->word, word);
 
-    if (current_node != NULL)
-    {
-      while (current_node->next != NULL)
-      {
-        current_node = current_node->next;
-      }
-      current_node->next = node;
-    }
-    else
-    {
-      hash_table->heads[i] = node; // save the node
-    }
+    // insert the new node (beginning of the linked list)
+    hash_table_node_t *next_node = hash_table->heads[i];
+    hash_table->heads[i] = node;
+    node->next = next_node;
 
     hash_table->number_of_entries++;
   }
@@ -298,116 +293,63 @@ static hash_table_node_t *find_word(hash_table_t *hash_table, const char *word, 
 // add edges to the word ladder graph (mostly do be done)
 //
 
-/*static hash_table_node_t *find_representative(hash_table_node_t *node)
+static void define_representative(hash_table_t *hash_table, hash_table_node_t *to, hash_table_node_t *from)
 {
-  hash_table_node_t *representative, *next_node;
-
-  return representative;
-}*/
-
-static void define_representative(hash_table_node_t *to, hash_table_node_t *from)
-{
-  // 'fix' the representative
+  /*// 'fix' the representative
   hash_table_node_t *from_representative = from->representative;
   hash_table_node_t *to_representative = to->representative;
   
   if (from_representative != to_representative && to->head != NULL)
   {
+    from->representative->number_of_vertices += to->representative->number_of_vertices;
     for (adjacency_node_t *node = to->head; node != NULL; node = node->next)
       node->vertex->representative = from_representative;
+  } else {
+    from->representative->number_of_vertices ++;
   }
 
-  to->representative = from_representative;
+  to->representative = from_representative;*/
+
+  // 'fix' the representative
+  hash_table_node_t *from_representative = from->representative;
+  hash_table_node_t *to_representative = to->representative;
+
+  // reset the number of vertices
+  from->representative->number_of_vertices = 0;
+  for (unsigned int i = 0u; i < hash_table->hash_table_size; i++)
+  {
+    hash_table_node_t *hash_table_node = hash_table->heads[i];
+    while (hash_table_node != NULL)
+    {
+      if (hash_table_node->representative == to_representative)
+      {
+        hash_table_node->representative = from_representative;
+        from->representative->number_of_vertices++;
+      }
+      hash_table_node = hash_table_node->next;
+    }
+  }
 }
 
 static void add_edge(hash_table_t *hash_table, hash_table_node_t *from, const char *word)
 {
-  hash_table_node_t *from_representative, *to_representative;
-  // adjacency_node_t *link;
-
   hash_table_node_t *to = find_word(hash_table, word, 0);
   if (to != NULL)
   {
     // connect 'from' to 'to'
     adjacency_node_t *from_adjacency_node = from->head;
-
-    if (from_adjacency_node != NULL)
-    {
-      while (from_adjacency_node->next != NULL) from_adjacency_node = from_adjacency_node->next;
-
-      from_adjacency_node->next = allocate_adjacency_node();
-      from_adjacency_node->next->next = NULL;
-      from_adjacency_node->next->vertex = to;
-    } else {
-      from->head = allocate_adjacency_node();
-      from->head->next = NULL;
-      from->head->vertex = to;
-    }
+    from->head = allocate_adjacency_node();
+    from->head->next = from_adjacency_node;
+    from->head->vertex = to;
 
     // connect 'to' to 'from'
     adjacency_node_t *to_adjacency_node = to->head;
-    if (to_adjacency_node != NULL)
-    {
-      while (to_adjacency_node->next != NULL) to_adjacency_node = to_adjacency_node->next;
-
-      to_adjacency_node->next = allocate_adjacency_node();
-      to_adjacency_node->next->next = NULL;
-      to_adjacency_node->next->vertex = from;
-    } else {
-      to->head = allocate_adjacency_node();
-      to->head->next = NULL;
-      to->head->vertex = from;
-    }
+    to->head = allocate_adjacency_node();
+    to->head->next = to_adjacency_node;
+    to->head->vertex = from;
 
     // representative
-    // define_representative(to, from);
-
-    from_representative = from->representative;
-    to_representative = to->representative;
-
-    for (unsigned int i = 0u; i < hash_table->hash_table_size; i++)
-    {
-      hash_table_node_t *hash_table_node = hash_table->heads[i];
-
-      while (hash_table_node != NULL)
-      {
-        if (hash_table_node->representative == to_representative)
-        {
-          hash_table_node->representative = from_representative;
-        }
-
-        hash_table_node = hash_table_node->next;
-      }
-    }
-
-    /*adjacency_node_t *to_node = to->head;
-    bool word_exists = false;
-
-    if (to_node != NULL)
-    {
-      while (to_node != NULL)
-      {
-        adjacency_node_t *from_node = from->head;
-        if (from_node != NULL)
-        {
-          while (from_node->next != NULL && !word_exists)
-          {
-            word_exists = !strcmp(from_node->vertex->word, to_node->vertex->word);
-            from_node = from_node->next;
-          }
-
-          if (!word_exists)
-          {
-            from_node->next = allocate_adjacency_node();
-            from_node->next->next = NULL;
-            from_node->next->vertex = to_node->vertex; 
-          }
-        }
-        word_exists = false;
-
-        to_node = to_node->next;
-      }
-    }*/
+    define_representative(hash_table, to, from);
   }
 }
 
@@ -500,12 +442,35 @@ static void similar_words(hash_table_t *hash_table, hash_table_node_t *from)
 // returns the number of vertices visited; if the last one is goal, following the previous links gives the shortest path between goal and origin
 //
 
-static int breadh_first_search(int maximum_number_of_vertices, hash_table_node_t **list_of_vertices, hash_table_node_t *origin, hash_table_node_t *goal)
+static int breadh_first_search(hash_table_node_t *goal)
 {
-  //
-  // complete this
-  //
-  return -1;
+  unsigned int number_of_used_vertices = 1;
+  unsigned int i = 0;
+  hash_table_node_t *previous = goal->previous;
+
+  // follow the 'previous pointer' until the beginning to count how many words do we need (in reverse order)
+  while (previous != NULL)
+  {
+    number_of_used_vertices++;
+    previous = previous->previous;
+  }
+
+  // create an array to save all of the needed words in correct order
+  char word_arr[number_of_used_vertices][_max_word_size_];
+
+  // save all the words on the array
+  previous = goal->previous;
+  while (previous != NULL)
+  {
+    strcpy(word_arr[number_of_used_vertices - 2 - i++], previous->word);
+    previous = previous->previous;
+  }
+  strcpy(word_arr[number_of_used_vertices - 1], goal->word);
+
+  // finally, loop over the array and print all of the words in the correct order
+  for (i = 0; i < number_of_used_vertices; i++) printf("  %s\n", word_arr[i]);
+  
+  return number_of_used_vertices;
 }
 
 //
@@ -559,9 +524,50 @@ static int connected_component_diameter(hash_table_node_t *node)
 
 static void path_finder(hash_table_t *hash_table, const char *from_word, const char *to_word)
 {
-  //
-  // complete this
-  //
+  hash_table_node_t *to = find_word(hash_table, to_word, 0);
+  hash_table_node_t *from = find_word(hash_table, from_word, 0);
+
+  if (to == NULL || from == NULL) return; // one or both of the words might not exist
+  if (to->representative != from->representative) return; // make sure both words belong to same connected componen
+
+  // allocate memory for the queue
+  hash_table_node_t **queue = (hash_table_node_t **)malloc((size_t)to->representative->number_of_vertices * sizeof(hash_table_node_t *));
+
+  unsigned int r = 0;
+  unsigned int w = 1;
+
+  queue[0] = from;
+  queue[0]->visited = 1;
+
+  bool node_found = false;
+  while (r != w && !node_found)
+  {
+    for (adjacency_node_t *adj_node = queue[r]->head; adj_node != NULL && !node_found; adj_node = adj_node->next)
+    {
+      if (!adj_node->vertex->visited) {
+        adj_node->vertex->visited = 1;
+
+        adj_node->vertex->previous = queue[r];
+        queue[w++] = adj_node->vertex;
+
+        if (!strcmp(adj_node->vertex->word, to->word))
+          node_found = true;
+      }
+    }
+    r++;
+  }
+
+  // print the path
+  breadh_first_search(to);
+
+  // reset the visited status on all of the node inside the queue
+  unsigned int i = 0;
+  for (hash_table_node_t *node = queue[i]; node != NULL; node = queue[++i]) {
+    node->visited = 0;
+    node->previous = NULL;
+  }
+
+  free(queue); // clean up
 }
 
 //
