@@ -445,7 +445,7 @@ static int breadh_first_search(hash_table_node_t *origin, hash_table_node_t *goa
   hash_table_node_t *previous = goal->previous;
 
   // follow the 'previous pointer' until the beginning to count (and print) the words
-  if (!diameter_calculation) printf("path from %s to %s\n  [ 0] %s\n", origin->word, goal->word, goal->word);
+  if (!diameter_calculation) printf("path from %s to %s\n  [ 0] %s\n", goal->word, origin->word, goal->word);
   while (previous != NULL)
   {
     if (!diameter_calculation) printf("  [%2d] %s\n", number_of_used_vertices, previous->word);
