@@ -633,7 +633,7 @@ static void graph_info(hash_table_t *hash_table)
 
 //
 // main program
-//
+// 
 
 int main(int argc, char **argv)
 {
