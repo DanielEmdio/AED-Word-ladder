@@ -529,6 +529,7 @@ static int connected_component_diameter(hash_table_t *hash_table, hash_table_nod
 
   // clean up
   free(connected_component_nodes);
+  diameter = largest_diameter;
   largest_diameter = -1;
 
   return diameter;
